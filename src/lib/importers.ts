@@ -87,3 +87,81 @@ export function importSubagentMarkdown(markdown: string): Subagent {
     updatedAt: new Date().toISOString(),
   };
 }
+
+export interface DiscoveredAsset {
+  type: "skill" | "subagent";
+  name: string;
+  content: string;
+  platform: "opencode" | "claude";
+  path: string;
+}
+
+export async function scanFolderForAssets(files: File[]): Promise<DiscoveredAsset[]> {
+  const assets: DiscoveredAsset[] = [];
+
+  for (const file of files) {
+    const path = file.webkitRelativePath || file.name;
+    const normalizedPath = path.replace(/\\/g, "/");
+    
+    const opencodeSkillMatch = normalizedPath.match(/^\.?opencode\/skills\/.+\/SKILL\.md$/i);
+    const opencodeSkillRootMatch = normalizedPath.match(/^\.?opencode\/skills\/SKILL\.md$/i);
+    const opencodeAgentMatch = normalizedPath.match(/^\.?opencode\/agents\/[^/]+\.md$/i);
+    const claudeSkillMatch = normalizedPath.match(/^\.?claude\/skills\/.+\/SKILL\.md$/i);
+    const claudeSkillRootMatch = normalizedPath.match(/^\.?claude\/skills\/SKILL\.md$/i);
+    const claudeAgentMatch = normalizedPath.match(/^\.?claude\/agents\/[^/]+\.md$/i);
+
+    let type: "skill" | "subagent" | null = null;
+    let platform: "opencode" | "claude" | null = null;
+
+    if (opencodeSkillMatch || opencodeSkillRootMatch) {
+      type = "skill";
+      platform = "opencode";
+    } else if (opencodeAgentMatch) {
+      type = "subagent";
+      platform = "opencode";
+    } else if (claudeSkillMatch || claudeSkillRootMatch) {
+      type = "skill";
+      platform = "claude";
+    } else if (claudeAgentMatch) {
+      type = "subagent";
+      platform = "claude";
+    }
+
+    if (type && platform) {
+      const content = await file.text();
+      const pathParts = normalizedPath.split("/");
+      let name: string;
+
+      if (type === "skill") {
+        const skillIndex = pathParts.findIndex((p) => p === "skills");
+        name = pathParts[skillIndex + 1] || file.name.replace(/\.md$/, "");
+      } else {
+        name = pathParts[pathParts.length - 1]?.replace(/\.md$/, "") || file.name;
+      }
+
+      assets.push({
+        type,
+        name,
+        content,
+        platform,
+        path: normalizedPath,
+      });
+    }
+  }
+
+  return assets;
+}
+
+export function importDiscoveredAsset(asset: DiscoveredAsset): Skill | Subagent {
+  if (asset.type === "skill") {
+    const skill = importSkillMarkdown(asset.content);
+    skill.platforms = asset.platform;
+    skill.name = asset.name;
+    return skill;
+  } else {
+    const subagent = importSubagentMarkdown(asset.content);
+    subagent.platforms = asset.platform;
+    subagent.name = asset.name;
+    return subagent;
+  }
+}
