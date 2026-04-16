@@ -11,3 +11,9 @@ Thumbs.db
 .vite/
 .cache/
 *.local
+
+# Tauri
+src-tauri/target/
+src-tauri/Cargo.lock
+src-tauri/.tauri/
+src-tauri/src/types.generated.rs
