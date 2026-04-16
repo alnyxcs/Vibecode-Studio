@@ -1,31 +1,73 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 import { getStarterSnapshot, localizeStarterData } from "@/data/starter";
 import { aiProviderDefaults } from "@/lib/constants";
 import { normalizeSnapshot, wouldCreateSubagentCycle } from "@/lib/snapshot";
-import { type AppDataSnapshot, type AppView, type Locale, type Project, type Skill, type Subagent, type ThemeMode } from "@/types";
+import { type AppDataSnapshot, type AppView, type Locale, type Project, type Skill, type Subagent, type ThemeMode, type AiSettings } from "@/types";
 import { createId } from "@/lib/utils";
-
-import { type AiSettings } from "@/types";
+import { saveSettings, loadSettings, saveSkill, deleteSkill, loadSkills, saveSubagent, deleteSubagent, loadSubagents, type TauriAppSettings, type TauriSkill, type TauriSubagent } from "@/lib/tauri-data";
 
 const initialLocale: Locale = "en";
 const initialSnapshot = getStarterSnapshot(initialLocale);
 
-const safeStorage = {
-  getItem: (name: string) => {
-    try {
-      return localStorage.getItem(name);
-    } catch {
-      return null;
-    }
-  },
-  setItem: (name: string, value: string) => {
-    localStorage.setItem(name, value);
-  },
-  removeItem: (name: string) => {
-    localStorage.removeItem(name);
-  },
-};
+function toPersistedState(settings: TauriAppSettings, skills: TauriSkill[], subagents: TauriSubagent[]) {
+  return {
+    theme: settings.theme,
+    locale: settings.locale,
+    activeView: settings.active_view,
+    activeProjectId: settings.active_project_id,
+    aiSettings: {
+      mode: settings.ai_settings.mode as AiSettings["mode"],
+      provider: settings.ai_settings.provider as AiSettings["provider"],
+      baseUrl: settings.ai_settings.base_url,
+      model: settings.ai_settings.model,
+      temperature: settings.ai_settings.temperature,
+      apiKey: settings.ai_settings.api_key,
+    },
+    projects: settings.projects.map(p => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      color: p.color,
+      createdAt: p.created_at,
+    })),
+    skills: skills.map(s => ({
+      id: s.id,
+      name: s.name,
+      description: s.description,
+      content: s.content,
+      frontmatter: {
+        model: s.frontmatter.model,
+        temperature: s.frontmatter.temperature,
+        context: s.frontmatter.context as Skill["frontmatter"]["context"],
+        tools: s.frontmatter.tools,
+        skills: s.frontmatter.skills,
+        permissions: s.frontmatter.permissions,
+      },
+      tags: s.tags,
+      visibility: s.visibility as Skill["visibility"],
+      projectId: s.project_id,
+      platforms: s.platforms as unknown as Skill["platforms"],
+      updatedAt: s.updated_at,
+    })),
+    subagents: subagents.map(sa => ({
+      id: sa.id,
+      name: sa.name,
+      rolePrompt: sa.role_prompt,
+      description: sa.description,
+      preferredModel: sa.preferred_model || "",
+      preloadedSkillIds: sa.preloaded_skill_ids,
+      allowedTools: sa.allowed_tools,
+      contextBehavior: sa.context_behavior as Subagent["contextBehavior"],
+      parentId: sa.parent_id,
+      usageExamples: sa.usage_examples,
+      visibility: sa.visibility as Subagent["visibility"],
+      projectId: sa.project_id,
+      platforms: sa.platforms as unknown as Subagent["platforms"],
+      updatedAt: sa.updated_at,
+    })),
+  };
+}
 
 interface AppState extends AppDataSnapshot {
   theme: ThemeMode;
@@ -48,9 +90,124 @@ interface AppState extends AppDataSnapshot {
   resetToStarter: () => void;
 }
 
-type PersistedAiSettings = Omit<AiSettings, "apiKey">;
-type PersistedAppState = Omit<Pick<AppState, "theme" | "locale" | "activeView" | "activeProjectId" | "aiSettings" | "projects" | "skills" | "subagents">, "aiSettings"> & {
-  aiSettings: PersistedAiSettings;
+type PersistedAppState = Pick<AppState, "theme" | "locale" | "activeView" | "activeProjectId" | "aiSettings" | "projects" | "skills" | "subagents">;
+
+const tauriStorage = {
+  getItem: async (_name: string): Promise<string | null> => {
+    try {
+      const settings = await loadSettings();
+      const skills = await loadSkills();
+      const subagents = await loadSubagents();
+      if (!settings) return null;
+      return JSON.stringify(toPersistedState(settings, skills, subagents));
+    } catch {
+      return null;
+    }
+  },
+  setItem: async (_name: string, value: string): Promise<void> => {
+    try {
+      const parsed = JSON.parse(value) as PersistedAppState;
+      
+      const settings: TauriAppSettings = {
+        theme: parsed.theme || "dark",
+        locale: parsed.locale || "en",
+        active_view: parsed.activeView || "home",
+        active_project_id: parsed.activeProjectId || "",
+        ai_settings: parsed.aiSettings ? {
+          mode: parsed.aiSettings.mode || "hybrid",
+          provider: parsed.aiSettings.provider || "openai",
+          base_url: parsed.aiSettings.baseUrl || "",
+          model: parsed.aiSettings.model || "",
+          temperature: parsed.aiSettings.temperature ?? 0.3,
+          api_key: parsed.aiSettings.apiKey || "",
+        } : {
+          mode: "hybrid",
+          provider: "openai",
+          base_url: "",
+          model: "",
+          temperature: 0.3,
+          api_key: "",
+        },
+        projects: (parsed.projects || []).map((p: Project) => ({
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          color: p.color,
+          created_at: p.createdAt,
+        })),
+      };
+      await saveSettings(settings);
+
+      for (const s of (parsed.skills || [])) {
+        const skill: TauriSkill = {
+          id: s.id,
+          name: s.name,
+          description: s.description,
+          content: s.content,
+          frontmatter: {
+            model: s.frontmatter?.model || "gpt-4",
+            temperature: s.frontmatter?.temperature ?? 0.3,
+            context: s.frontmatter?.context || "fork",
+            tools: s.frontmatter?.tools || [],
+            skills: s.frontmatter?.skills || [],
+            permissions: s.frontmatter?.permissions || [],
+          },
+          tags: s.tags || [],
+          visibility: s.visibility || "global",
+          project_id: s.projectId || null,
+          platforms: Array.isArray(s.platforms) ? s.platforms : ["opencode", "claude"],
+          updated_at: s.updatedAt || new Date().toISOString(),
+          preferred_model: null,
+          usage_examples: [],
+        };
+        await saveSkill(skill);
+      }
+
+      for (const sa of (parsed.subagents || [])) {
+        const subagent: TauriSubagent = {
+          id: sa.id,
+          name: sa.name,
+          role_prompt: sa.rolePrompt,
+          description: sa.description,
+          preferred_model: sa.preferredModel || null,
+          parent_id: sa.parentId,
+          allowed_tools: sa.allowedTools || [],
+          preloaded_skill_ids: sa.preloadedSkillIds || [],
+          usage_examples: sa.usageExamples || [],
+          visibility: sa.visibility || "global",
+          project_id: sa.projectId || null,
+          platforms: Array.isArray(sa.platforms) ? sa.platforms : ["opencode", "claude"],
+          context_behavior: sa.contextBehavior || "separate",
+          updated_at: sa.updatedAt || new Date().toISOString(),
+        };
+        await saveSubagent(subagent);
+      }
+    } catch (e) {
+      console.error("Failed to save to file:", e);
+    }
+  },
+  removeItem: async (): Promise<void> => {
+    try {
+      const emptySettings: TauriAppSettings = {
+        theme: "dark",
+        locale: "en",
+        active_view: "home",
+        active_project_id: "",
+        ai_settings: {
+          mode: "hybrid",
+          provider: "openai",
+          base_url: "",
+          model: "",
+          temperature: 0.3,
+          api_key: "",
+        },
+        projects: [],
+      };
+      await saveSettings(emptySettings);
+    } catch (e) {
+      console.error("Failed to clear file:", e);
+    }
+  },
 };
 
 export const useAppStore = create<AppState>()(
@@ -59,7 +216,7 @@ export const useAppStore = create<AppState>()(
       ...initialSnapshot,
       theme: "dark",
       locale: initialLocale,
-            activeView: "home",
+      activeView: "home",
       activeProjectId: initialSnapshot.projects[0].id,
       aiSettings: {
         mode: "hybrid",
@@ -157,19 +314,45 @@ export const useAppStore = create<AppState>()(
             subagents: state.subagents,
           });
 
+          const tauriSkill: TauriSkill = {
+            id: skill.id,
+            name: skill.name,
+            description: skill.description,
+            content: skill.content,
+            frontmatter: {
+              model: skill.frontmatter.model,
+              temperature: skill.frontmatter.temperature,
+              context: skill.frontmatter.context,
+              tools: skill.frontmatter.tools,
+              skills: skill.frontmatter.skills,
+              permissions: skill.frontmatter.permissions,
+            },
+            tags: skill.tags,
+            visibility: skill.visibility,
+            project_id: skill.projectId,
+            platforms: Array.isArray(skill.platforms) ? skill.platforms : ["opencode", "claude"],
+            updated_at: skill.updatedAt,
+            preferred_model: null,
+            usage_examples: [],
+          };
+          saveSkill(tauriSkill).catch(console.error);
+
           return {
             skills: normalized.skills,
             subagents: normalized.subagents,
           };
         }),
       deleteSkill: (skillId) =>
-        set((state) => ({
-          skills: state.skills.filter((skill) => skill.id !== skillId),
-          subagents: state.subagents.map((subagent) => ({
-            ...subagent,
-            preloadedSkillIds: subagent.preloadedSkillIds.filter((id) => id !== skillId),
-          })),
-        })),
+        set((state) => {
+          deleteSkill(skillId).catch(console.error);
+          return {
+            skills: state.skills.filter((skill) => skill.id !== skillId),
+            subagents: state.subagents.map((subagent) => ({
+              ...subagent,
+              preloadedSkillIds: subagent.preloadedSkillIds.filter((id) => id !== skillId),
+            })),
+          };
+        }),
       upsertSubagent: (subagent) =>
         set((state) => {
           const candidate = wouldCreateSubagentCycle(state.subagents, subagent.id, subagent.parentId) ? { ...subagent, parentId: null } : subagent;
@@ -181,19 +364,40 @@ export const useAppStore = create<AppState>()(
               : [candidate, ...state.subagents],
           });
 
+          const tauriSubagent: TauriSubagent = {
+            id: candidate.id,
+            name: candidate.name,
+            role_prompt: candidate.rolePrompt,
+            description: candidate.description,
+            preferred_model: candidate.preferredModel || null,
+            parent_id: candidate.parentId,
+            allowed_tools: candidate.allowedTools,
+            preloaded_skill_ids: candidate.preloadedSkillIds,
+            usage_examples: candidate.usageExamples,
+            visibility: candidate.visibility,
+            project_id: candidate.projectId,
+            platforms: Array.isArray(candidate.platforms) ? candidate.platforms : ["opencode", "claude"],
+            context_behavior: candidate.contextBehavior,
+            updated_at: candidate.updatedAt,
+          };
+          saveSubagent(tauriSubagent).catch(console.error);
+
           return {
             subagents: normalized.subagents,
           };
         }),
       deleteSubagent: (subagentId) =>
-        set((state) => ({
-          subagents: state.subagents
-            .filter((subagent) => subagent.id !== subagentId)
-            .map((subagent) => ({
-              ...subagent,
-              parentId: subagent.parentId === subagentId ? null : subagent.parentId,
-            })),
-        })),
+        set((state) => {
+          deleteSubagent(subagentId).catch(console.error);
+          return {
+            subagents: state.subagents
+              .filter((subagent) => subagent.id !== subagentId)
+              .map((subagent) => ({
+                ...subagent,
+                parentId: subagent.parentId === subagentId ? null : subagent.parentId,
+              })),
+          };
+        }),
       importSnapshot: (snapshot, mode) =>
         set((state) => {
           const normalizedSnapshot = normalizeSnapshot(snapshot);
@@ -233,49 +437,23 @@ export const useAppStore = create<AppState>()(
           return {
             ...starterSnapshot,
             activeProjectId: starterSnapshot.projects[0].id,
-      activeView: "home",
+            activeView: "home",
           };
         }),
     }),
     {
       name: "vibecode-studio-storage",
-      storage: {
-        getItem: (name) => {
-          const raw = safeStorage.getItem(name);
-          if (!raw) {
-            return null;
-          }
-
-          try {
-            return JSON.parse(raw);
-          } catch {
-            safeStorage.removeItem(name);
-            return null;
-          }
-        },
-        setItem: (name, value) => {
-          safeStorage.setItem(name, JSON.stringify(value));
-        },
-        removeItem: (name) => {
-          safeStorage.removeItem(name);
-        },
-      },
-        partialize: (state): PersistedAppState => ({
-          theme: state.theme,
-          locale: state.locale,
-          activeView: state.activeView,
-          activeProjectId: state.activeProjectId,
-          aiSettings: {
-            mode: state.aiSettings.mode,
-            provider: state.aiSettings.provider,
-            baseUrl: state.aiSettings.baseUrl,
-            model: state.aiSettings.model,
-            temperature: state.aiSettings.temperature,
-          },
-          projects: state.projects,
-          skills: state.skills,
-          subagents: state.subagents,
-        }),
+      storage: createJSONStorage(() => tauriStorage),
+      partialize: (state): PersistedAppState => ({
+        theme: state.theme,
+        locale: state.locale,
+        activeView: state.activeView,
+        activeProjectId: state.activeProjectId,
+        aiSettings: state.aiSettings,
+        projects: state.projects,
+        skills: state.skills,
+        subagents: state.subagents,
+      }),
     },
   ),
 );
