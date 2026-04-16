@@ -91,6 +91,137 @@ function inferTags(prompt: string) {
   return matches.length > 0 ? matches.slice(0, 4) : ["generated", "assistant"];
 }
 
+function generateResponsibilities(prompt: string): string {
+  const text = prompt.toLowerCase();
+  
+  if (text.includes("review")) {
+    return "- analyze code for issues, anti-patterns, and improvements\n- verify adherence to best practices\n- suggest concrete fixes with rationale\n- assess performance and security implications";
+  }
+  if (text.includes("test")) {
+    return "- write comprehensive test cases\n- identify edge cases and boundary conditions\n- ensure test coverage for critical paths\n- verify expected behavior against requirements";
+  }
+  if (text.includes("refactor")) {
+    return "- identify code smells and duplication\n- propose cleaner abstractions\n- maintain existing functionality\n- ensure changes are minimal and safe";
+  }
+  if (text.includes("docs") || text.includes("documentation")) {
+    return "- extract key information from code\n- produce clear, structured documentation\n- include code examples where helpful\n- maintain consistency with existing docs";
+  }
+  if (text.includes("debug") || text.includes("bug")) {
+    return "- analyze error messages and stack traces\n- identify root causes of issues\n- propose actionable fixes\n- verify the solution works";
+  }
+  if (text.includes("api") || text.includes("endpoint")) {
+    return "- design clean, RESTful interfaces\n- validate request/response contracts\n- handle errors gracefully\n- document usage clearly";
+  }
+  if (text.includes("git") || text.includes("commit")) {
+    return "- analyze changed files\n- suggest meaningful commit messages\n- verify no unintended changes\n- ensure clean history";
+  }
+  if (text.includes("planning") || text.includes("architecture")) {
+    return "- understand the requirements thoroughly\n- break down into manageable tasks\n- identify dependencies and risks\n- provide clear implementation steps";
+  }
+  
+  return "- clarify the target outcome before acting\n- prefer minimal, production-safe changes\n- surface tradeoffs only when they change the implementation path\n- keep outputs easy to paste into OpenCode or Claude Code";
+}
+
+function generateWorkflow(prompt: string): string {
+  const text = prompt.toLowerCase();
+  
+  if (text.includes("review")) {
+    return "1. Inspect the relevant code files\n2. Analyze structure, patterns, and potential issues\n3. Identify specific improvements\n4. Provide actionable recommendations with code examples";
+  }
+  if (text.includes("test")) {
+    return "1. Understand the function/component behavior\n2. Write test cases covering happy path and edge cases\n3. Run tests to verify correctness\n4. Refine tests for clarity and coverage";
+  }
+  if (text.includes("refactor")) {
+    return "1. Understand the current implementation\n2. Identify code smells and improvement opportunities\n3. Apply minimal, safe changes\n4. Verify existing tests still pass";
+  }
+  if (text.includes("debug") || text.includes("bug")) {
+    return "1. Gather context: error messages, stack traces, recent changes\n2. Reproduce the issue if possible\n3. Identify root cause\n4. Propose and verify fix";
+  }
+  if (text.includes("docs") || text.includes("documentation")) {
+    return "1. Review the relevant code and existing docs\n2. Extract key concepts and APIs\n3. Write clear, structured documentation\n4. Include examples where helpful";
+  }
+  
+  return "1. Inspect relevant context first\n2. Propose or execute the smallest correct change\n3. Verify the result with concrete checks\n4. Return concise output with next useful action";
+}
+
+function generateOutputFormat(prompt: string): string {
+  const text = prompt.toLowerCase();
+  
+  if (text.includes("review")) {
+    return "- Summary of findings\n- Specific issues with file:line references\n- Recommended fixes (with code when helpful)\n- Priority: critical/important/suggestion";
+  }
+  if (text.includes("test")) {
+    return "- Test file location\n- Test cases coverage summary\n- Edge cases handled\n- Any issues found during testing";
+  }
+  if (text.includes("docs") || text.includes("documentation")) {
+    return "- Document title and purpose\n- Key sections and their content\n- Usage examples\n- Related files or APIs";
+  }
+  if (text.includes("debug") || text.includes("bug")) {
+    return "- Root cause identified\n- Evidence supporting the diagnosis\n- Proposed fix with explanation\n- Steps to verify the fix";
+  }
+  
+  return "- short summary\n- concrete actions or findings\n- file references or generated assets when relevant";
+}
+
+function generateOperatingRules(prompt: string): string {
+  const text = prompt.toLowerCase();
+  
+  if (text.includes("review")) {
+    return "- work with a senior code reviewer mindset\n- prioritize clarity and maintainability\n- suggest improvements only when they meaningfully impact quality\n- provide specific, actionable feedback with examples";
+  }
+  if (text.includes("test")) {
+    return "- write tests that are maintainable and self-documenting\n- prefer readable test names over complex assertions\n- cover both happy path and edge cases\n- keep tests focused and independent";
+  }
+  if (text.includes("refactor")) {
+    return "- prioritize safety: never break existing functionality\n- make incremental changes when possible\n- preserve the original intent of the code\n- prefer clarity over cleverness";
+  }
+  if (text.includes("debug") || text.includes("bug")) {
+    return "- start with the simplest explanation first\n- gather evidence before diagnosing\n- verify your hypothesis before proposing a fix\n- consider side effects and edge cases";
+  }
+  if (text.includes("git") || text.includes("commit")) {
+    return "- make atomic, well-scoped changes\n- write clear, conventional commit messages\n- verify no unintended changes are included\n- ensure the commit message explains the 'why'";
+  }
+  if (text.includes("docs") || text.includes("documentation")) {
+    return "- write for the reader, not the writer\n- use clear, simple language\n- include practical examples\n- keep documentation in sync with code";
+  }
+  if (text.includes("api") || text.includes("endpoint")) {
+    return "- design for clarity and usability\n- follow RESTful conventions when applicable\n- provide meaningful error messages\n- document request/response contracts";
+  }
+  
+  return "- work with a senior engineer mindset\n- inspect context before making assumptions\n- keep changes minimal and production-safe\n- return findings first when reviewing or diagnosing\n- provide ready-to-run output when asked to implement";
+}
+
+function generateRoleIntro(prompt: string): string {
+  const text = prompt.toLowerCase();
+  
+  if (text.includes("review")) {
+    return "You are a senior code reviewer specialized in analyzing code quality, identifying issues, and providing constructive feedback.";
+  }
+  if (text.includes("test")) {
+    return "You are a QA engineer specialized in writing comprehensive tests, identifying edge cases, and ensuring code correctness.";
+  }
+  if (text.includes("refactor")) {
+    return "You are a refactoring specialist focused on improving code quality while maintaining functionality.";
+  }
+  if (text.includes("debug") || text.includes("bug")) {
+    return "You are a debugging expert specialized in diagnosing issues, identifying root causes, and finding solutions.";
+  }
+  if (text.includes("git") || text.includes("commit")) {
+    return "You are a Git specialist focused on clean commits, proper branching, and efficient version control workflows.";
+  }
+  if (text.includes("docs") || text.includes("documentation")) {
+    return "You are a technical writer specialized in creating clear, comprehensive documentation.";
+  }
+  if (text.includes("api") || text.includes("endpoint")) {
+    return "You are an API designer focused on creating clean, usable interfaces and proper error handling.";
+  }
+  if (text.includes("planning") || text.includes("architecture")) {
+    return "You are a software architect focused on system design, planning, and technical decision-making.";
+  }
+  
+  return "You are a specialized AI assistant.";
+}
+
 function titleCasePrompt(prompt: string, fallback: string) {
   const cleaned = prompt.replace(/[^a-zA-Z0-9\s-]/g, " ").trim();
   if (!cleaned) return fallback;
@@ -110,7 +241,20 @@ function localSkillDraft(input: SkillGenerationInput): GeneratedSkillDraft {
   return {
     name: baseName,
     description: `AI-generated skill for ${input.prompt.toLowerCase().slice(0, 80)}${input.prompt.length > 80 ? "..." : ""}`,
-    content: `# ${baseName}\n\nYou are a focused skill for the following task:\n\n> ${input.prompt}\n\n## Responsibilities\n- clarify the target outcome before acting\n- prefer minimal, production-safe changes\n- surface tradeoffs only when they change the implementation path\n- keep outputs easy to paste into OpenCode or Claude Code\n\n## Workflow\n1. Inspect relevant context first\n2. Propose or execute the smallest correct change\n3. Verify the result with concrete checks\n4. Return concise output with next useful action\n\n## Output format\n- short summary\n- concrete actions or findings\n- file references or generated assets when relevant`,
+    content: `# ${baseName}
+
+You are a focused skill for the following task:
+
+> ${input.prompt}
+
+## Responsibilities
+${generateResponsibilities(input.prompt)}
+
+## Workflow
+${generateWorkflow(input.prompt)}
+
+## Output format
+${generateOutputFormat(input.prompt)}`,
     frontmatter: {
       model: chooseModel(input.prompt),
       temperature: 0.3,
@@ -137,10 +281,20 @@ function localSubagentDraft(input: SubagentGenerationInput): GeneratedSubagentDr
     .slice(0, 3)
     .map((skill) => skill.id);
 
+  const roleIntro = generateRoleIntro(input.prompt);
+  const operatingRules = generateOperatingRules(input.prompt);
+
   return {
     name: baseName.startsWith("generated") ? "generated-agent" : baseName,
     description: `AI-generated subagent for ${input.prompt.toLowerCase().slice(0, 80)}${input.prompt.length > 80 ? "..." : ""}`,
-    rolePrompt: `You are @${baseName.startsWith("generated") ? "generated-agent" : baseName}, a specialist subagent.\n\nPrimary mission: ${input.prompt}\n\nOperating rules:\n- work with a senior engineer mindset\n- inspect context before making assumptions\n- keep changes minimal and production-safe\n- return findings first when reviewing or diagnosing\n- provide ready-to-run output when asked to implement\n\nWhen the request is ambiguous, ask only the shortest clarifying question that unblocks execution.`,
+    rolePrompt: `${roleIntro}
+
+Primary mission: ${input.prompt}
+
+Operating rules:
+${operatingRules}
+
+When the request is ambiguous, ask only the shortest clarifying question that unblocks execution.`,
     preferredModel: chooseModel(input.prompt),
     preloadedSkillIds: likelySkills,
     allowedTools: toolMatches.length > 0 ? toolMatches : ["Read", "Glob", "Grep"],

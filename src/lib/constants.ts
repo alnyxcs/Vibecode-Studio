@@ -128,3 +128,24 @@ export const aiProviderLabels = {
   nebius: "Nebius AI Studio",
   custom: "Custom (OpenAI-compatible)",
 } as const;
+
+export const aiProviderApiUrls = {
+  openai: "https://platform.openai.com/api-keys",
+  anthropic: "https://console.anthropic.com/settings/keys",
+  openrouter: "https://openrouter.ai/settings",
+  gemini: "https://aistudio.google.com/app/apikey",
+  groq: "https://console.groq.com/keys",
+  deepseek: "https://platform.deepseek.com/api-keys",
+  mistral: "https://console.mistral.ai/api-keys/",
+  xai: "https://console.x.ai/",
+  together: "https://docs.together.ai/docs/api_credentials",
+  fireworks: "https://fireworks.ai/account/api-keys",
+  perplexity: "https://docs.perplexity.ai/docs/quick-start",
+  ollama: "https://github.com/ollama/ollama",
+  cerebras: "https://cerebras.ai/docs/getting-started",
+  sambanova: "https://cloud.sambanova.ai/apikeys",
+  hyperbolic: "https://app.hyperbolic.xyz/settings",
+  moonshot: "https://platform.moonshot.cn/pricing",
+  nebius: "https://studio.nebius.com/account/keys",
+  custom: "",
+} as const;
